@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>时代蜂族培训数据追踪</title>
+    <meta name="description" content="时代蜂族培训数据追踪响应式看板页面">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#0f766e',
+                        ink: '#10212b',
+                        surface: '#f4f7f3',
+                        accent: '#f59e0b'
+                    },
+                    boxShadow: {
+                        soft: '0 24px 80px rgba(16, 33, 43, 0.10)'
+                    },
+                    fontFamily: {
+                        sans: ['"Segoe UI"', '"PingFang SC"', '"Microsoft YaHei"', 'sans-serif']
+                    }
+                }
+            }
+        };
+    </script>
+    <style>
+        :root { color-scheme: light; }
+        body {
+            background:
+                radial-gradient(circle at top left, rgba(15, 118, 110, 0.10), transparent 28%),
+                radial-gradient(circle at top right, rgba(245, 158, 11, 0.14), transparent 24%),
+                linear-gradient(180deg, #f7faf7 0%, #edf3ef 100%);
+        }
+        .glass-panel { background: rgba(255, 255, 255, 0.88); backdrop-filter: blur(14px); }
+        .metric-card::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            background: linear-gradient(135deg, rgba(15, 118, 110, 0.08), transparent 55%);
+            pointer-events: none;
+        }
+        .metric-card > * { position: relative; z-index: 1; }
+        .chart-grid {
+            background-image:
+                linear-gradient(to right, rgba(148, 163, 184, 0.12) 1px, transparent 1px),
+                linear-gradient(to top, rgba(148, 163, 184, 0.12) 1px, transparent 1px);
+            background-size: calc(100% / 6) calc(100% / 4);
+        }
+        .drawer-open { overflow: hidden; }
+        .admin-tab-active { background: rgba(15, 118, 110, 0.12); color: #0f766e; border-color: rgba(15, 118, 110, 0.18); }
+        .hidden-panel { display: none; }
+        .touch-scroll-x {
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            touch-action: pan-x;
+        }
+        .touch-scroll-x::-webkit-scrollbar { display: none; }
+        button { min-height: 48px; }
+        button.rounded-full { min-width: 48px; }
+
+        input,
+        select,
+        textarea {
+            font-size: 16px !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen font-sans text-slate-800">
+    <div class="relative flex min-h-screen">
+        <div id="sidebar-backdrop" class="fixed inset-0 z-[35] hidden bg-slate-950/40 lg:hidden" aria-hidden="true"></div>
+
+        <aside id="sidebar" class="glass-panel fixed inset-y-0 left-0 z-40 flex w-full max-w-none -translate-x-full flex-col border-r border-white/70 shadow-soft transition-transform duration-300 md:max-w-sm lg:static lg:w-72 lg:max-w-none lg:translate-x-0">
+            <div class="flex h-20 items-center justify-between border-b border-slate-200/80 px-6">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.28em] text-primary/80">Bee Training Hub</p>
+                    <h1 class="mt-1 text-2xl font-semibold text-ink">培训追踪台</h1>
+                </div>
+                <button id="close-sidebar" class="rounded-full p-2 text-slate-500 hover:bg-slate-100 lg:hidden" type="button" aria-label="关闭侧边栏">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 18 18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto px-6 py-6">
+                <section aria-labelledby="filter-title">
+                    <div class="mb-5">
+                        <h2 id="filter-title" class="text-sm font-semibold uppercase tracking-[0.25em] text-slate-500">培训筛选</h2>
+                        <p class="mt-2 text-sm leading-6 text-slate-500">快速切换时间范围和培训项目，页面摘要会即时同步。</p>
+                    </div>
+                    <div class="space-y-5">
+                        <div>
+                            <label for="time-range" class="mb-2 block text-sm font-medium text-slate-700">时间范围</label>
+                            <select id="time-range" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
+                                <option value="全部时间" selected>全部时间</option>
+                                <option value="1月">1月</option>
+                                <option value="2月">2月</option>
+                                <option value="3月">3月</option>
+                                <option value="4月">4月</option>
+                                <option value="5月">5月</option>
+                                <option value="6月">6月</option>
+                                <option value="7月">7月</option>
+                                <option value="8月">8月</option>
+                                <option value="9月">9月</option>
+                                <option value="10月">10月</option>
+                                <option value="11月">11月</option>
+                                <option value="12月">12月</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="department" class="mb-2 block text-sm font-medium text-slate-700">类别</label>
+                            <select id="department" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
+                                <option value="全部类别" selected>全部类别</option>
+                                <option value="线下课堂">线下课堂</option>
+                                <option value="自主培训课程">自主培训课程</option>
+                                <option value="商学院">商学院</option>
+                                <option value="通关">通关</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="filter-branch" class="mb-2 block text-sm font-medium text-slate-700">分公司</label>
+                            <select id="filter-branch" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
+                                <option value="全部分公司" selected>全部分公司</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="filter-sales-dept" class="mb-2 block text-sm font-medium text-slate-700">营业部</label>
+                            <select id="filter-sales-dept" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
+                                <option value="全部营业部" selected>全部营业部</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="filter-course" class="mb-2 block text-sm font-medium text-slate-700">课堂名称</label>
+                            <select id="filter-course" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
+                                <option value="全部课堂" selected>全部课堂</option>
+                            </select>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="mt-8 rounded-3xl bg-ink px-5 py-5 text-white shadow-soft">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-white/60">Training Health</p>
+                            <h2 class="mt-2 text-lg font-semibold">培训推进状态稳定</h2>
+                        </div>
+                        <span class="rounded-full bg-emerald-400/15 px-3 py-1 text-xs font-medium text-emerald-200">正常</span>
+                    </div>
+                    <p class="mt-3 text-sm leading-6 text-white/75">报名、到课和结业表现处于预期区间，建议优先关注待跟进学员的转化进度。</p>
+                    <dl class="mt-5 space-y-3 text-sm">
+                        <div class="flex items-center justify-between"><dt class="text-white/60">课程到课率</dt><dd id="health-attendance" class="font-semibold">96.8%</dd></div>
+                        <div class="flex items-center justify-between"><dt class="text-white/60">学员满意度</dt><dd class="font-semibold">4.8 / 5</dd></div>
+                        <div class="flex items-center justify-between"><dt class="text-white/60">异常预警数</dt><dd id="health-alerts" class="font-semibold text-amber-200">3 条</dd></div>
+                    </dl>
+                </section>
+            </div>
+
+            <div class="border-t border-slate-200/80 px-6 py-5">
+                <div class="flex gap-3">
+                    <button id="reset-filters" class="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50" type="button">重置筛选</button>
+                    <button id="apply-filters" class="flex-1 rounded-2xl bg-primary px-4 py-3 text-sm font-medium text-white transition hover:bg-teal-700" type="button">应用筛选</button>
+                </div>
+            </div>
+        </aside>
+
+        <div class="flex min-h-screen min-w-0 flex-1 flex-col">
+            <header class="sticky top-0 z-20 border-b border-white/70 bg-white/75 backdrop-blur">
+                <div class="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-4 md:px-6 lg:px-8">
+                    <div class="flex items-center gap-3">
+                        <button id="open-sidebar" class="rounded-full border border-slate-200 bg-white p-2 text-slate-700 shadow-sm transition hover:bg-slate-50 lg:hidden" type="button" aria-label="打开侧边栏">
+                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 7h16M4 12h16M4 17h16" /></svg>
+                        </button>
+                        <div>
+                            <p class="hidden text-xs font-semibold uppercase tracking-[0.26em] text-primary/80 md:block">Training Analytics</p>
+                            <h2 class="text-base font-semibold text-ink md:text-xl">时代蜂族培训数据追踪</h2>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2 md:gap-4">
+                        <button id="open-login" class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50" type="button" aria-label="教务入口">
+                            <span id="login-badge" class="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">教</span>
+                            <span class="hidden md:inline">教务入口</span>
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <main class="mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-6 md:px-6 lg:px-8 lg:py-8">
+                <section class="mt-4 grid grid-cols-2 gap-3 md:hidden">
+                    <button id="mobile-open-filter" class="rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50" type="button">
+                        打开筛选
+                    </button>
+                    <button id="mobile-open-login" class="rounded-[1.25rem] bg-ink px-4 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800" type="button">
+                        教务入口
+                    </button>
+                </section>
+
+                <section class="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <article class="metric-card relative overflow-hidden rounded-[1.5rem] border border-white/80 bg-white p-5 shadow-soft md:rounded-[1.75rem] md:p-6"><p class="text-sm font-medium text-slate-500">参训人数</p><div class="mt-4 flex items-end justify-between gap-4"><div><p id="metric-total" class="text-3xl font-semibold text-ink">0</p><p id="metric-total-note" class="mt-2 text-sm font-medium text-slate-600">等待导入培训数据</p></div><span id="metric-total-badge" class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">待汇总</span></div><div class="mt-4 border-t border-slate-100 pt-3"><p id="metric-total-insight" class="text-xs text-slate-500">结构分析加载中...</p></div></article>
+                    <article class="metric-card relative overflow-hidden rounded-[1.5rem] border border-white/80 bg-white p-5 shadow-soft md:rounded-[1.75rem] md:p-6"><p class="text-sm font-medium text-slate-500">已签到人数</p><div class="mt-4 flex items-end justify-between gap-4"><div><p id="metric-attended" class="text-3xl font-semibold text-ink">0</p><p id="metric-attended-note" class="mt-2 text-sm font-medium text-emerald-600">等待导入签到数据</p></div><span id="metric-attended-badge" class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">签到进度待计算</span></div><div class="mt-4 border-t border-slate-100 pt-3"><p id="metric-attended-insight" class="text-xs text-slate-500">签到状态分析中...</p></div></article>
+                    <article id="card-absent" class="metric-card relative cursor-pointer rounded-[1.5rem] border border-white/80 bg-white p-5 shadow-soft md:cursor-default md:rounded-[1.75rem] md:p-6"><p class="text-sm font-medium text-slate-500">未签到人数</p><div class="mt-4 flex items-end justify-between gap-4"><div><p id="metric-absent" class="text-3xl font-semibold text-ink">0</p><p id="metric-absent-note" class="mt-2 text-sm font-medium text-rose-600">等待导入签到数据</p></div><span id="metric-absent-badge" class="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">预警待计算</span></div><div class="mt-4 border-t border-slate-100 pt-3 flex items-center gap-1.5"><svg class="h-3.5 w-3.5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg><p id="metric-absent-insight" class="text-xs font-medium text-amber-700">预警分析加载中...</p></div><div id="absent-tooltip" class="absolute left-0 top-[calc(100%+8px)] z-30 hidden w-full rounded-[1.25rem] border border-slate-200 bg-white p-4 shadow-xl transition-all"><p class="text-xs font-semibold text-slate-500">最近未签到人员 (Top 10)</p><ul id="absent-list" class="mt-3 space-y-2"></ul></div></article>
+                    <article class="metric-card relative overflow-hidden rounded-[1.5rem] border border-white/80 bg-white p-5 shadow-soft md:rounded-[1.75rem] md:p-6"><p class="text-sm font-medium text-slate-500">参训率</p><div class="mt-4 flex items-end justify-between gap-4"><div><p id="metric-rate" class="text-3xl font-semibold text-ink">0%</p><p id="metric-rate-note" class="mt-2 text-sm font-medium text-primary">导入后自动计算</p></div><span id="metric-rate-badge" class="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">待评估</span></div><div class="mt-4 border-t border-slate-100 pt-3"><p id="metric-rate-insight" class="text-xs text-slate-500">KPI 达标计算中...</p></div></article>
+                </section>
+
+                <section class="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-1">
+                    <article class="glass-panel rounded-[2rem] border border-white/80 p-5 shadow-soft md:p-6">
+                        <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                            <div><p class="text-sm font-medium text-slate-500">培训趋势</p><h3 class="mt-1 text-xl font-semibold text-ink">近 6 个月参训走势</h3></div>
+                            <div class="flex flex-wrap gap-2 text-xs font-medium"><span class="rounded-full bg-primary/10 px-3 py-1 text-primary">实际参训</span><span class="rounded-full bg-accent/15 px-3 py-1 text-amber-700">目标人数</span></div>
+                        </div>
+                        <div class="chart-grid mt-6 overflow-hidden rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4">
+                            <svg id="trend-svg" viewBox="0 0 760 320" class="h-[220px] w-full md:h-[280px]" role="img" aria-label="近六个月参训趋势图">
+                                <defs><linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#0f766e" stop-opacity="0.28" /><stop offset="100%" stop-color="#0f766e" stop-opacity="0.03" /></linearGradient></defs>
+                                <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                    <path id="trend-axis-line" d="M50 250H710" stroke="#cbd5e1" stroke-width="1.5" />
+                                    <path id="trend-grid-line-1" d="M50 200H710" stroke="#e2e8f0" stroke-width="1" />
+                                    <path id="trend-grid-line-2" d="M50 150H710" stroke="#e2e8f0" stroke-width="1" />
+                                    <path id="trend-grid-line-3" d="M50 100H710" stroke="#e2e8f0" stroke-width="1" />
+                                    <path id="trend-grid-line-4" d="M50 50H710" stroke="#e2e8f0" stroke-width="1" />
+                                    <path id="trend-area" d="M80 220L190 205L300 180L410 145L520 110L630 80L630 250L80 250Z" fill="url(#areaGradient)" stroke="none" />
+                                    <path id="trend-line" d="M80 220L190 205L300 180L410 145L520 110L630 80" stroke="#0f766e" stroke-width="4" />
+                                    <path id="trend-target-line" d="M80 205L190 185L300 165L410 145L520 120L630 95" stroke="#f59e0b" stroke-width="3" stroke-dasharray="10 10" />
+                                </g>
+                                <g id="trend-x-axis" fill="#10212b" font-size="12">
+                                    <text x="68" y="275">11 月</text><text x="178" y="275">12 月</text><text x="290" y="275">1 月</text><text x="400" y="275">2 月</text><text x="510" y="275">3 月</text><text x="620" y="275">4 月</text>
+                                </g>
+                                <g fill="#10212b" font-size="12">
+                                    <text x="16" y="255">0</text><text x="8" y="205">20</text><text x="8" y="155">40</text><text x="8" y="105">60</text><text x="8" y="55">80</text>
+                                    <text id="trend-peak-label" x="645" y="75" fill="#0f766e">0 人</text>
+                                </g>
+                                <g id="trend-points" fill="#0f766e"><circle cx="80" cy="220" r="6" /><circle cx="190" cy="205" r="6" /><circle cx="300" cy="180" r="6" /><circle cx="410" cy="145" r="6" /><circle cx="520" cy="110" r="6" /><circle cx="630" cy="80" r="6" /></g>
+                            </svg>
+                        </div>
+                    </article>
+                </section>
+
+                <section class="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-1">
+                    <article class="glass-panel rounded-[2rem] border border-white/80 p-5 shadow-soft md:p-6">
+                        <div class="flex items-center justify-between gap-3"><div><p class="text-sm font-medium text-slate-500">最新上传资料</p><h3 class="mt-1 text-xl font-semibold text-ink">培训资料同步记录</h3></div><span id="upload-badge" class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">0 份资料</span></div>
+                        <ul id="upload-list" class="mt-6 space-y-4"><li class="rounded-[1.5rem] bg-slate-50 px-4 py-4 text-sm text-slate-500">暂无上传记录，进入教务后台后可导入 Excel 培训数据。</li></ul>
+                    </article>
+                </section>
+            </main>
+        </div>
+
+        <div id="login-modal" class="hidden fixed inset-0 z-50 items-center justify-center overflow-y-auto bg-slate-950/45 px-4 py-6">
+            <div class="glass-panel w-[92vw] max-w-md rounded-[2rem] border border-white/70 p-5 shadow-soft md:p-6">
+                <div class="flex items-start justify-between gap-4">
+                    <div><p class="text-xs font-semibold uppercase tracking-[0.26em] text-primary/80">Access Control</p><h3 class="mt-2 text-2xl font-semibold text-ink">教务登录入口</h3></div>
+                    <button id="close-login" class="rounded-full p-2 text-slate-500 hover:bg-slate-100" type="button" aria-label="关闭登录框"><svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 18 18 6M6 6l12 12" /></svg></button>
+                </div>
+                <form id="login-form" class="mt-6 space-y-4">
+                    <div><label for="login-username" class="mb-2 block text-sm font-medium text-slate-700">账号</label><input id="login-username" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" type="text" autocomplete="username" placeholder="请输入账号"></div>
+                    <div><label for="login-password" class="mb-2 block text-sm font-medium text-slate-700">密码</label><input id="login-password" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" type="password" autocomplete="current-password" placeholder="请输入密码"></div>
+                    <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-500">请输入教务管理员账号与密码进行验证。</div>
+                    <p id="login-error" class="hidden text-sm font-medium text-rose-600">账号或密码错误。</p>
+                    <button class="w-full rounded-2xl bg-primary px-4 py-3 text-sm font-medium text-white transition hover:bg-teal-700" type="submit">登录教务后台</button>
+                </form>
+            </div>
+        </div>
+
+        <div id="export-modal" class="hidden fixed inset-0 z-[60] items-center justify-center bg-slate-950/45 px-4 py-6">
+            <div class="glass-panel w-[92vw] max-w-sm rounded-[2rem] border border-white/70 p-5 shadow-soft md:p-6">
+                <div class="flex items-start justify-between gap-4">
+                    <div><p class="text-xs font-semibold uppercase tracking-[0.26em] text-primary/80">Export Options</p><h3 class="mt-2 text-2xl font-semibold text-ink">选择导出内容</h3></div>
+                    <button id="close-export" class="rounded-full p-2 text-slate-500 hover:bg-slate-100" type="button" aria-label="关闭导出选项"><svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 18 18 6M6 6l12 12" /></svg></button>
+                </div>
+                <div class="mt-6 flex flex-col gap-3">
+                    <button class="export-option-btn rounded-2xl bg-primary px-4 py-3 text-sm font-medium text-white transition hover:bg-teal-700" data-type="filtered" type="button">筛选数据</button>
+                    <button class="export-option-btn rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50" data-type="summary" type="button">汇总</button>
+                    <button class="export-option-btn rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50" data-type="detail" type="button">明细</button>
+                    <button class="export-option-btn rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50" data-type="log" type="button">日志</button>
+                </div>
+            </div>
+        </div>
+
+        <aside id="admin-drawer" class="glass-panel fixed inset-y-0 right-0 z-50 flex w-full max-w-none translate-x-full flex-col border-l border-white/70 shadow-soft transition-transform duration-300 md:max-w-2xl">
+            <div class="flex items-center justify-between border-b border-slate-200/80 px-4 py-4 md:px-6 md:py-5">
+                <div><p class="text-xs font-semibold uppercase tracking-[0.26em] text-primary/80">Admin Workspace</p><h3 class="mt-1 text-2xl font-semibold text-ink">教务后台</h3></div>
+                <div class="flex items-center gap-2">
+                    <button id="logout-admin" class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" type="button">退出登录</button>
+                    <button id="close-admin" class="rounded-full p-2 text-slate-500 hover:bg-slate-100" type="button" aria-label="关闭教务后台"><svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 18 18 6M6 6l12 12" /></svg></button>
+                </div>
+            </div>
+            <div class="border-b border-slate-200/80 px-4 py-4 md:px-6">
+                <div id="admin-tab-strip" class="touch-scroll-x flex flex-nowrap gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible">
+                    <button class="admin-tab admin-tab-active shrink-0 rounded-2xl border border-transparent px-4 py-2 text-sm font-medium transition" type="button" data-tab="overview">总览</button>
+                    <button class="admin-tab shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" type="button" data-tab="data">数据中心</button>
+                    <button class="admin-tab shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" type="button" data-tab="pivot">自助透视</button>
+                    <button class="admin-tab shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" type="button" data-tab="admins">管理员</button>
+                    <button class="admin-tab shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" type="button" data-tab="scale">界面缩放</button>
+                    <button class="admin-tab shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50" type="button" data-tab="logs">变动日志</button>
+                </div>
+            </div>
+            <div class="flex-1 overflow-y-auto px-4 py-4 md:px-6 md:py-6">
+                <section class="admin-panel" data-panel="overview"><div class="grid gap-4 md:grid-cols-2"><div class="rounded-[1.5rem] bg-slate-50 p-4 md:p-5"><p class="text-sm text-slate-500">当前登录</p><p id="admin-current-user" class="mt-2 text-xl font-semibold text-ink">未登录</p><p class="mt-2 text-sm text-slate-400">可从此处进入数据上传、导出、账号管理与日志查看。</p></div><div class="rounded-[1.5rem] bg-slate-50 p-4 md:p-5"><p class="text-sm text-slate-500">当前数据概况</p><p id="admin-overview-summary" class="mt-2 text-xl font-semibold text-ink">0 份文件 / 0 条记录</p><p id="admin-overview-time" class="mt-2 text-sm text-slate-400">尚未导入培训数据</p></div></div></section>
+                <section class="admin-panel hidden-panel" data-panel="data">
+                    <div class="rounded-[1.75rem] bg-slate-50 p-4 md:p-5">
+                        <p class="text-sm font-medium text-slate-500">数据导入规则</p>
+                        <p class="mt-2 text-sm leading-6 text-slate-600">上传 Excel 后，系统会逐行读取各单元格数据。首列为“线下课堂 / 自主培训 / 商学院”时自动归类，时间会优先从带有“时间 / 日期 / 培训时间 / 上课时间 / 开始时间 / 创建时间”等表头的列中提取。</p>
+                    </div>
+
+                    <div class="mt-5 flex flex-col gap-3 md:flex-row md:flex-wrap">
+                        <button id="admin-upload-trigger" class="rounded-2xl bg-ink px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800" type="button">上传培训数据</button>
+                        <button id="admin-export-trigger" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50" type="button">导出培训报表</button>
+                        <input id="admin-upload-input" class="hidden" type="file" accept=".xlsx,.xls,.csv">
+                    </div>
+
+                    <div class="mt-6 rounded-[1.75rem] border border-slate-200 bg-white p-4 md:p-5">
+                        <div class="flex items-center justify-between gap-4">
+                            <div>
+                                <p class="text-sm font-medium text-slate-500">最新导入结果</p>
+                                <p id="admin-import-summary" class="mt-2 text-lg font-semibold text-ink">暂无导入记录</p>
+                            </div>
+                            <span id="admin-import-badge" class="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">待导入</span>
+                        </div>
+                        <div id="admin-import-details" class="mt-4 space-y-3 text-sm text-slate-500">
+                            <p>导入后会在这里展示文件名、记录条数、分类结果和提取到的时间范围。</p>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 rounded-[1.75rem] border border-slate-200 bg-white p-4 md:p-5">
+                        <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                            <div>
+                                <p class="text-sm font-medium text-slate-500">文件管理</p>
+                                <p class="mt-1 text-lg font-semibold text-ink">已导入培训文件</p>
+                            </div>
+                            <span id="file-management-count" class="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">0 个文件</span>
+                        </div>
+
+                        <div class="mt-4 overflow-x-auto">
+                            <table class="min-w-full divide-y divide-slate-200 text-sm">
+                                <thead>
+                                    <tr class="text-left text-slate-500">
+                                        <th class="px-3 py-3 font-medium">文件名</th>
+                                        <th class="px-3 py-3 font-medium">记录数</th>
+                                        <th class="px-3 py-3 font-medium">导入时间</th>
+                                        <th class="px-3 py-3 font-medium">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="file-table-body" class="divide-y divide-slate-100">
+                                    <tr>
+                                        <td colspan="4" class="px-3 py-4 text-slate-500">暂无文件记录。</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <p id="file-table-empty" class="mt-4 text-sm text-slate-500">当前还没有可管理的上传文件。</p>
+                    </div>
+                </section>
+                <section class="admin-panel hidden-panel" data-panel="pivot">
+                    <div class="rounded-[1.75rem] border border-slate-200 bg-white p-4 md:p-5">
+                        <div class="flex flex-wrap gap-4">
+                            <div class="min-w-[180px] flex-1">
+                                <label for="pivot-x-axis" class="mb-2 block text-sm font-medium text-slate-700">X轴 / 行维度</label>
+                                <select id="pivot-x-axis" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
+                                    <option value="month">月份</option>
+                                    <option value="category">类别</option>
+                                    <option value="company">公司名称</option>
+                                    <option value="salesDept">营业部</option>
+                                    <option value="course">课堂名称</option>
+                                </select>
+                            </div>
+                            <div class="min-w-[180px] flex-1">
+                                <label for="pivot-y-axis" class="mb-2 block text-sm font-medium text-slate-700">Y轴 / 拆分维度</label>
+                                <select id="pivot-y-axis" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
+                                    <option value="none">无</option>
+                                    <option value="category">类别</option>
+                                    <option value="company">公司名称</option>
+                                </select>
+                            </div>
+                            <div class="min-w-[180px] flex-1">
+                                <label for="pivot-chart-type" class="mb-2 block text-sm font-medium text-slate-700">图表类型</label>
+                                <select id="pivot-chart-type" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
+                                    <option value="bar">柱状图</option>
+                                    <option value="line">折线图</option>
+                                    <option value="pie">饼图</option>
+                                    <option value="table">数据表格</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="pivot-chart-container" class="mt-6 h-[400px] w-full rounded-[1.75rem] border border-slate-200 bg-white p-4"></div>
+                        <div id="pivot-table-container" class="mt-6 hidden overflow-x-auto rounded-[1.75rem] border border-slate-200 bg-white p-4"></div>
+                    </div>
+                </section>
+                <section class="admin-panel hidden-panel" data-panel="admins"><div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.9fr)]"><div class="rounded-[1.75rem] border border-slate-200 bg-white p-4 md:p-5"><div class="flex items-center justify-between gap-4"><div><p class="text-sm font-medium text-slate-500">管理员列表</p><p class="mt-2 text-lg font-semibold text-ink">当前可登录账号</p></div><span id="admin-count-label" class="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">0 个账号</span></div><ul id="admin-list" class="mt-5 space-y-3"><li class="rounded-[1.25rem] bg-slate-50 px-4 py-4 text-sm text-slate-500">暂无管理员账号。</li></ul></div><div class="space-y-5"><form id="admin-create-form" class="rounded-[1.75rem] bg-slate-50 p-4 md:p-5"><p class="text-sm font-medium text-slate-500">新增管理员账号</p><div class="mt-4 space-y-4"><div><label for="new-admin-username" class="mb-2 block text-sm font-medium text-slate-700">新账号</label><input id="new-admin-username" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" type="text" placeholder="例如：teacher01"></div><div><label for="new-admin-password" class="mb-2 block text-sm font-medium text-slate-700">新密码</label><input id="new-admin-password" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" type="password" placeholder="设置登录密码"></div></div><p id="admin-create-error" class="mt-4 hidden text-sm font-medium text-rose-600">账号创建失败。</p><button class="mt-5 w-full rounded-2xl bg-primary px-4 py-3 text-sm font-medium text-white transition hover:bg-teal-700" type="submit">保存管理员账号</button></form><div id="admin-permission-notice" class="hidden rounded-[1.75rem] bg-slate-50 p-4 text-sm text-slate-500 md:p-5 flex items-center justify-center">仅超级管理员 (XUCONGXIANG) 有权限新增账号。</div></div></section>
+                <section class="admin-panel hidden-panel" data-panel="scale"><div class="rounded-[1.75rem] bg-slate-50 p-4 md:p-5"><div class="flex flex-wrap items-center justify-between gap-4"><div><p class="text-sm font-medium text-slate-500">页面 UI 大小比例拖动调整锁</p><p class="mt-2 text-lg font-semibold text-ink">当前缩放：<span id="scale-value">100%</span></p></div><button id="toggle-scale-lock" class="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50" type="button">锁定缩放</button></div><input id="scale-slider" class="mt-6 h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200" type="range" min="85" max="120" step="1" value="100"><p id="scale-hint" class="mt-3 text-sm text-slate-500">未锁定时可拖动调整页面比例，锁定后会阻止进一步修改。</p></div></section>
+                <section class="admin-panel hidden-panel" data-panel="logs"><div class="rounded-[1.75rem] border border-slate-200 bg-white p-4 md:p-5"><div class="flex items-center justify-between gap-4"><div><p class="text-sm font-medium text-slate-500">数据变动日志</p><p class="mt-2 text-lg font-semibold text-ink">最近操作记录</p></div><button id="clear-logs" class="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50" type="button">清空日志</button></div><ul id="log-list" class="mt-5 space-y-3"><li class="rounded-[1.25rem] bg-slate-50 px-4 py-4 text-sm text-slate-500">暂无日志记录。</li></ul></div></section>
+            </div>
+        </aside>
+
+        <div id="toast" class="pointer-events-none fixed bottom-6 right-6 z-[60] translate-y-4 rounded-2xl bg-ink px-4 py-3 text-sm font-medium text-white opacity-0 shadow-soft transition duration-300">操作已完成</div>
+    </div>
+
+    <script src="./dashboard.js"></script>
+</body>
+</html>
