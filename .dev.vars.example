@@ -1,0 +1,5 @@
+BMOB_APP_ID="请填写你的 Bmob Application ID"
+BMOB_REST_API_KEY="请填写你的 Bmob REST API Key"
+AUTH_SECRET="请替换成一串足够长的随机字符串"
+SUPER_ADMIN_USERNAME="XUCONGXIANG"
+SUPER_ADMIN_PASSWORD="请填写超级管理员默认密码"
