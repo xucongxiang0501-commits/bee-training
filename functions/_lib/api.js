@@ -1,4 +1,4 @@
-const BMOB_BASE_URLS = [
+const DEFAULT_BMOB_BASE_URLS = [
     "https://api2.bmob.cn/1",
     "https://api.bmobapp.com/1"
 ];
@@ -57,6 +57,25 @@ function getRequiredEnv(env, key) {
     return value;
 }
 
+function getBmobBaseUrls(env) {
+    const configured = String(env?.BMOB_API_BASE_URL || "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .map((value) => {
+            const normalized = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+            const url = new URL(normalized);
+            url.protocol = "https:";
+            url.pathname = url.pathname.replace(/\/+$/, "");
+            if (!url.pathname.endsWith("/1")) {
+                url.pathname = `${url.pathname}/1`.replace(/\/{2,}/g, "/");
+            }
+            return url.toString().replace(/\/+$/, "");
+        });
+
+    return configured.length ? configured : DEFAULT_BMOB_BASE_URLS;
+}
+
 function buildBmobHeaders(env) {
     return {
         "Content-Type": "application/json",
@@ -93,7 +112,7 @@ function isRetryableFetchError(error) {
 export async function bmobRequest(env, path, { method = "GET", query = {}, body } = {}) {
     let lastError = null;
 
-    for (const baseUrl of BMOB_BASE_URLS) {
+    for (const baseUrl of getBmobBaseUrls(env)) {
         try {
             const response = await fetch(buildBmobUrl(baseUrl, path, query), {
                 method,
@@ -122,6 +141,15 @@ export async function bmobRequest(env, path, { method = "GET", query = {}, body 
                 break;
             }
         }
+    }
+
+    if (lastError && /1016/.test(String(lastError?.message || ""))) {
+        const domainHint = env?.BMOB_API_BASE_URL
+            ? `当前已配置 BMOB_API_BASE_URL=${env.BMOB_API_BASE_URL}`
+            : "当前未配置 BMOB_API_BASE_URL";
+        const error = new Error(`Bmob 返回 error code: 1016。推测为 API 域名未绑定、未备案，或当前应用不允许通过默认公共域名访问 REST API。请在 Bmob 控制台绑定“API域名”，并在 Cloudflare 环境变量中新增 BMOB_API_BASE_URL 后重新部署。${domainHint}`);
+        error.status = lastError.status || 502;
+        throw error;
     }
 
     throw lastError || new Error("无法连接 Bmob 服务");

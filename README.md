@@ -58,6 +58,7 @@
 部署到 Cloudflare Pages / Functions 时，至少需要配置：
 - `BMOB_APP_ID`
 - `BMOB_REST_API_KEY`
+- `BMOB_API_BASE_URL`
 - `AUTH_SECRET`
 - `SUPER_ADMIN_USERNAME`
 - `SUPER_ADMIN_PASSWORD`
@@ -65,6 +66,7 @@
 其中：
 - `AUTH_SECRET` 用来签发登录令牌
 - `SUPER_ADMIN_USERNAME` / `SUPER_ADMIN_PASSWORD` 用来在 `Admins` 表为空时自动补一个超级管理员种子账号
+- `BMOB_API_BASE_URL` 填你在 Bmob 控制台绑定好的 API 域名，格式例如 `https://api.example.com`
 
 ## 上传到 GitHub 的文件
 需要上传这些内容：
